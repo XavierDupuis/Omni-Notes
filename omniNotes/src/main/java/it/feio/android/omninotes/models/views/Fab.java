@@ -55,11 +55,27 @@ public class Fab {
   }
 
   private void init() {
-    this.fabHidden = true;
-    this.fabExpanded = false;
+    setHiddenAndExpanded();
 
     AddFloatingActionButton fabAddButton = floatingActionsMenu
         .findViewById(R.id.fab_expand_menu_button);
+
+    setOnClickListener(fabAddButton);
+    setOnLongClickListener(fabAddButton);
+    setOnScrollListener();
+    setFloatingActionsMenu();
+
+    if (!expandOnLongClick) {
+      setNoteButton();
+    }
+  }
+
+  private void setHiddenAndExpanded() {
+    this.fabHidden = true;
+    this.fabExpanded = false;
+  }
+
+  private void setOnClickListener(AddFloatingActionButton fabAddButton) {
     fabAddButton.setOnClickListener(v -> {
       if (!isExpanded() && expandOnLongClick) {
         performAction(v);
@@ -67,6 +83,9 @@ public class Fab {
         performToggle();
       }
     });
+  }
+
+  private void setOnLongClickListener(AddFloatingActionButton fabAddButton) {
     fabAddButton.setOnLongClickListener(v -> {
       if (!expandOnLongClick) {
         performAction(v);
@@ -75,29 +94,35 @@ public class Fab {
       }
       return true;
     });
-    recyclerView.addOnScrollListener(
-        new RecyclerView.OnScrollListener() {
-          public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
-            if (dy > 0) {
-              hideFab();
-            } else if (dy < 0) {
-              floatingActionsMenu.collapse();
-              showFab();
-            } else {
-              LogDelegate.d("No Vertical Scrolled");
-            }
-          }
-        });
+  }
 
+  private void setOnScrollListener() {
+    recyclerView.addOnScrollListener(
+            new RecyclerView.OnScrollListener() {
+              public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
+                if (dy > 0) {
+                  hideFab();
+                } else if (dy < 0) {
+                  floatingActionsMenu.collapse();
+                  showFab();
+                } else {
+                  LogDelegate.d("No Vertical Scrolled");
+                }
+              }
+            });
+  }
+
+  private void setFloatingActionsMenu() {
     floatingActionsMenu.findViewById(R.id.fab_checklist).setOnClickListener(onClickListener);
     floatingActionsMenu.findViewById(R.id.fab_camera).setOnClickListener(onClickListener);
-
-    if (!expandOnLongClick) {
-      View noteBtn = floatingActionsMenu.findViewById(R.id.fab_note);
-      noteBtn.setVisibility(View.VISIBLE);
-      noteBtn.setOnClickListener(onClickListener);
-    }
   }
+
+  private void setNoteButton() {
+    View noteBtn = floatingActionsMenu.findViewById(R.id.fab_note);
+    noteBtn.setVisibility(View.VISIBLE);
+    noteBtn.setOnClickListener(onClickListener);
+  }
+
 
   private final View.OnClickListener onClickListener = new View.OnClickListener() {
     @Override
