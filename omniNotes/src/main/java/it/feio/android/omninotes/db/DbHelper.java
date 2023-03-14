@@ -18,34 +18,20 @@ package it.feio.android.omninotes.db;
 
 import static it.feio.android.checklistview.interfaces.Constants.UNCHECKED_SYM;
 import static it.feio.android.omninotes.utils.Constants.DATABASE_NAME;
-import static it.feio.android.omninotes.utils.ConstantsBase.MIME_TYPE_AUDIO;
-import static it.feio.android.omninotes.utils.ConstantsBase.MIME_TYPE_FILES;
-import static it.feio.android.omninotes.utils.ConstantsBase.MIME_TYPE_IMAGE;
-import static it.feio.android.omninotes.utils.ConstantsBase.MIME_TYPE_SKETCH;
-import static it.feio.android.omninotes.utils.ConstantsBase.MIME_TYPE_VIDEO;
-import static it.feio.android.omninotes.utils.ConstantsBase.PREF_FILTER_ARCHIVED_IN_CATEGORIES;
-import static it.feio.android.omninotes.utils.ConstantsBase.PREF_FILTER_PAST_REMINDERS;
 import static it.feio.android.omninotes.utils.ConstantsBase.PREF_PASSWORD;
-import static it.feio.android.omninotes.utils.ConstantsBase.PREF_SORTING_COLUMN;
-import static it.feio.android.omninotes.utils.ConstantsBase.TIMESTAMP_UNIX_EPOCH;
 
 import android.content.ContentValues;
 import android.content.Context;
-import android.database.Cursor;
 import android.database.SQLException;
 import android.database.sqlite.SQLiteDatabase;
-import android.database.sqlite.SQLiteOpenHelper;
-import android.net.Uri;
 import com.pixplicity.easyprefs.library.Prefs;
 import it.feio.android.omninotes.OmniNotes;
 import it.feio.android.omninotes.async.upgrade.UpgradeProcessor;
 import it.feio.android.omninotes.exceptions.DatabaseException;
 import it.feio.android.omninotes.helpers.LogDelegate;
-import it.feio.android.omninotes.helpers.NotesHelper;
 import it.feio.android.omninotes.models.Attachment;
 import it.feio.android.omninotes.models.Category;
 import it.feio.android.omninotes.models.Note;
-import it.feio.android.omninotes.models.Stats;
 import it.feio.android.omninotes.models.Tag;
 import it.feio.android.omninotes.utils.AssetUtils;
 import it.feio.android.omninotes.utils.Navigation;
@@ -64,7 +50,7 @@ import java.util.regex.Pattern;
 import org.apache.commons.lang3.StringUtils;
 
 
-public class DbHelper extends SQLiteOpenHelper {
+public class DbHelper extends DbHelper2 {
 
   // Database name
   // Database version aligned if possible to software version
@@ -120,7 +106,6 @@ public class DbHelper extends SQLiteOpenHelper {
   private final Context mContext;
 
   private static DbHelper instance = null;
-  private SQLiteDatabase db;
 
 
   public static synchronized DbHelper getInstance() {
@@ -154,18 +139,6 @@ public class DbHelper extends SQLiteOpenHelper {
 
   public String getDatabaseName() {
     return DATABASE_NAME;
-  }
-
-  public SQLiteDatabase getDatabase() {
-    return getDatabase(false);
-  }
-
-  public SQLiteDatabase getDatabase(boolean forceWritable) {
-    try {
-      return forceWritable ? getWritableDatabase() : getReadableDatabase();
-    } catch (IllegalStateException e) {
-      return this.db;
-    }
   }
 
   @Override
@@ -312,185 +285,10 @@ public class DbHelper extends SQLiteOpenHelper {
   }
 
 
-  /**
-   * Getting single note
-   */
-  public Note getNote(long id) {
-    List<Note> notes = getNotes(" WHERE " + KEY_ID + " = " + id, true);
-    return notes.isEmpty() ? null : notes.get(0);
-  }
-
-
-  /**
-   * Getting All notes
-   *
-   * @param checkNavigation Tells if navigation status (notes, archived) must be kept in
-   *                        consideration or if all notes have to be retrieved
-   * @return Notes list
-   */
-  public List<Note> getAllNotes(Boolean checkNavigation) {
-    String whereCondition = "";
-    if (Boolean.TRUE.equals(checkNavigation)) {
-      int navigation = Navigation.getNavigation();
-      switch (navigation) {
-        case Navigation.NOTES:
-          return getNotesActive();
-        case Navigation.ARCHIVE:
-          return getNotesArchived();
-        case Navigation.REMINDERS:
-          return getNotesWithReminder(Prefs.getBoolean(PREF_FILTER_PAST_REMINDERS, false));
-        case Navigation.TRASH:
-          return getNotesTrashed();
-        case Navigation.UNCATEGORIZED:
-          return getNotesUncategorized();
-        case Navigation.CATEGORY:
-          return getNotesByCategory(Navigation.getCategory());
-        default:
-          return getNotes(whereCondition, true);
-      }
-    } else {
-      return getNotes(whereCondition, true);
-    }
-
-  }
-
-
-  public List<Note> getNotesActive() {
-    String whereCondition =
-        " WHERE " + KEY_ARCHIVED + " IS NOT 1 AND " + KEY_TRASHED + " IS NOT 1 ";
-    return getNotes(whereCondition, true);
-  }
-
-
-  public List<Note> getNotesArchived() {
-    String whereCondition = " WHERE " + KEY_ARCHIVED + " = 1 AND " + KEY_TRASHED + " IS NOT 1 ";
-    return getNotes(whereCondition, true);
-  }
-
-
-  public List<Note> getNotesTrashed() {
-    String whereCondition = " WHERE " + KEY_TRASHED + " = 1 ";
-    return getNotes(whereCondition, true);
-  }
-
-
-  public List<Note> getNotesUncategorized() {
-    String whereCondition = " WHERE "
-        + "(" + KEY_CATEGORY_ID + " IS NULL OR " + KEY_CATEGORY_ID + " == 0) "
-        + "AND " + KEY_TRASHED + " IS NOT 1";
-    return getNotes(whereCondition, true);
-  }
-
-
   public List<Note> getNotesWithLocation() {
     String whereCondition = " WHERE " + KEY_LONGITUDE + " IS NOT NULL "
         + "AND " + KEY_LONGITUDE + " != 0 ";
     return getNotes(whereCondition, true);
-  }
-
-
-  /**
-   * Common method for notes retrieval. It accepts a query to perform and returns matching records.
-   */
-  public List<Note> getNotes(String whereCondition, boolean order) {
-    List<Note> noteList = new ArrayList<>();
-
-    String sortColumn = "";
-    String sortOrder = "";
-
-    // Getting sorting criteria from preferences. Reminder screen forces sorting.
-    if (Navigation.checkNavigation(Navigation.REMINDERS)) {
-      sortColumn = KEY_REMINDER;
-    } else {
-      sortColumn = Prefs.getString(PREF_SORTING_COLUMN, KEY_TITLE);
-    }
-    if (order) {
-      sortOrder =
-          KEY_TITLE.equals(sortColumn) || KEY_REMINDER.equals(sortColumn) ? " ASC " : " DESC ";
-    }
-
-    // In case of title sorting criteria it must be handled empty title by concatenating content
-    sortColumn = KEY_TITLE.equals(sortColumn) ? KEY_TITLE + "||" + KEY_CONTENT : sortColumn;
-
-    // In case of reminder sorting criteria the empty reminder notes must be moved on bottom of results
-    sortColumn = KEY_REMINDER.equals(sortColumn) ? "IFNULL(" + KEY_REMINDER + ", " +
-        "" + TIMESTAMP_UNIX_EPOCH + ")" : sortColumn;
-
-    // Generic query to be specialized with conditions passed as parameter
-    String query = "SELECT "
-        + KEY_CREATION + ","
-        + KEY_LAST_MODIFICATION + ","
-        + KEY_TITLE + ","
-        + KEY_CONTENT + ","
-        + KEY_ARCHIVED + ","
-        + KEY_TRASHED + ","
-        + KEY_REMINDER + ","
-        + KEY_REMINDER_FIRED + ","
-        + KEY_RECURRENCE_RULE + ","
-        + KEY_LATITUDE + ","
-        + KEY_LONGITUDE + ","
-        + KEY_ADDRESS + ","
-        + KEY_LOCKED + ","
-        + KEY_CHECKLIST + ","
-        + KEY_CATEGORY + ","
-        + KEY_CATEGORY_NAME + ","
-        + KEY_CATEGORY_DESCRIPTION + ","
-        + KEY_CATEGORY_COLOR
-        + " FROM " + TABLE_NOTES
-        + " LEFT JOIN " + TABLE_CATEGORY + " USING( " + KEY_CATEGORY + ") "
-        + whereCondition
-        + (order ? " ORDER BY " + sortColumn + " COLLATE NOCASE " + sortOrder : "");
-
-    LogDelegate.v("Query: " + query);
-
-    try (Cursor cursor = getDatabase().rawQuery(query, null)) {
-
-      if (cursor.moveToFirst()) {
-        do {
-          int i = 0;
-          Note note = new Note();
-          note.setCreation(cursor.getLong(i++));
-          note.setLastModification(cursor.getLong(i++));
-          note.setTitle(cursor.getString(i++));
-          note.setContent(cursor.getString(i++));
-          note.setArchived("1".equals(cursor.getString(i++)));
-          note.setTrashed("1".equals(cursor.getString(i++)));
-          note.setAlarm(cursor.getString(i++));
-          note.setReminderFired(cursor.getInt(i++));
-          note.setRecurrenceRule(cursor.getString(i++));
-          note.setLatitude(cursor.getString(i++));
-          note.setLongitude(cursor.getString(i++));
-          note.setAddress(cursor.getString(i++));
-          note.setLocked("1".equals(cursor.getString(i++)));
-          note.setChecklist("1".equals(cursor.getString(i++)));
-
-          // Eventual decryption of content
-          if (Boolean.TRUE.equals(note.isLocked())) {
-            note.setContent(
-                Security.decrypt(note.getContent(), Prefs.getString(PREF_PASSWORD, "")));
-          }
-
-          // Set category
-          long categoryId = cursor.getLong(i++);
-          if (categoryId != 0) {
-            Category category = new Category(categoryId, cursor.getString(i++),
-                cursor.getString(i++), cursor.getString(i));
-            note.setCategory(category);
-          }
-
-          // Add eventual attachments uri
-          note.setAttachmentsList(getNoteAttachments(note));
-
-          // Adding note to list
-          noteList.add(note);
-
-        } while (cursor.moveToNext());
-      }
-
-    }
-
-    LogDelegate.v("Query: Retrieval finished!");
-    return noteList;
   }
 
 
@@ -590,21 +388,6 @@ public class DbHelper extends SQLiteOpenHelper {
 
 
   /**
-   * Search for notes with reminder
-   *
-   * @param filterPastReminders Excludes past reminders
-   * @return Notes list
-   */
-  public List<Note> getNotesWithReminder(boolean filterPastReminders) {
-    String whereCondition = " WHERE " + KEY_REMINDER
-        + (filterPastReminders ? " >= " + Calendar.getInstance().getTimeInMillis() : " IS NOT NULL")
-        + " AND " + KEY_ARCHIVED + " IS NOT 1"
-        + " AND " + KEY_TRASHED + " IS NOT 1";
-    return getNotes(whereCondition, true);
-  }
-
-
-  /**
    * Returns all notes that have a reminder that has not been alredy fired
    *
    * @return Notes list
@@ -640,15 +423,6 @@ public class DbHelper extends SQLiteOpenHelper {
   }
 
 
-  /**
-   * Retrieves all attachments related to specific note
-   */
-  public ArrayList<Attachment> getNoteAttachments(Note note) {
-    String whereCondition = " WHERE " + KEY_ATTACHMENT_NOTE_ID + " = " + note.get_id();
-    return getAttachments(whereCondition);
-  }
-
-
   public List<Note> getChecklists() {
     String whereCondition = " WHERE " + KEY_CHECKLIST + " = 1";
     return getNotes(whereCondition, false);
@@ -658,29 +432,6 @@ public class DbHelper extends SQLiteOpenHelper {
   public List<Note> getMasked() {
     String whereCondition = " WHERE " + KEY_LOCKED + " = 1";
     return getNotes(whereCondition, false);
-  }
-
-
-  /**
-   * Retrieves all notes related to Category it passed as parameter
-   *
-   * @param categoryId Category integer identifier
-   * @return List of notes with requested category
-   */
-  public List<Note> getNotesByCategory(Long categoryId) {
-    List<Note> notes;
-    boolean filterArchived = Prefs
-        .getBoolean(PREF_FILTER_ARCHIVED_IN_CATEGORIES + categoryId, false);
-    try {
-      String whereCondition = " WHERE "
-          + KEY_CATEGORY_ID + " = " + categoryId
-          + " AND " + KEY_TRASHED + " IS NOT 1"
-          + (filterArchived ? " AND " + KEY_ARCHIVED + " IS NOT 1" : "");
-      notes = getNotes(whereCondition, true);
-    } catch (NumberFormatException e) {
-      notes = getAllNotes(true);
-    }
-    return notes;
   }
 
 
@@ -783,105 +534,6 @@ public class DbHelper extends SQLiteOpenHelper {
 
 
   /**
-   * Retrieves all attachments
-   */
-  public ArrayList<Attachment> getAllAttachments() {
-    return getAttachments("");
-  }
-
-
-  /**
-   * Retrieves attachments using a condition passed as parameter
-   *
-   * @return List of attachments
-   */
-  public ArrayList<Attachment> getAttachments(String whereCondition) {
-
-    ArrayList<Attachment> attachmentsList = new ArrayList<>();
-    String sql = "SELECT "
-        + KEY_ATTACHMENT_ID + ","
-        + KEY_ATTACHMENT_URI + ","
-        + KEY_ATTACHMENT_NAME + ","
-        + KEY_ATTACHMENT_SIZE + ","
-        + KEY_ATTACHMENT_LENGTH + ","
-        + KEY_ATTACHMENT_MIME_TYPE
-        + " FROM " + TABLE_ATTACHMENTS
-        + whereCondition;
-    SQLiteDatabase db;
-    Cursor cursor = null;
-
-    try {
-
-      cursor = getDatabase().rawQuery(sql, null);
-
-      // Looping through all rows and adding to list
-      if (cursor.moveToFirst()) {
-        Attachment mAttachment;
-        do {
-          mAttachment = new Attachment(cursor.getLong(0),
-              Uri.parse(cursor.getString(1)), cursor.getString(2), cursor.getInt(3),
-              (long) cursor.getInt(4), cursor.getString(5));
-          attachmentsList.add(mAttachment);
-        } while (cursor.moveToNext());
-      }
-
-    } finally {
-      if (cursor != null) {
-        cursor.close();
-      }
-    }
-    return attachmentsList;
-  }
-
-
-  /**
-   * Retrieves categories list from database
-   *
-   * @return List of categories
-   */
-  public ArrayList<Category> getCategories() {
-    ArrayList<Category> categoriesList = new ArrayList<>();
-    String sql = "SELECT "
-        + KEY_CATEGORY_ID + ","
-        + KEY_CATEGORY_NAME + ","
-        + KEY_CATEGORY_DESCRIPTION + ","
-        + KEY_CATEGORY_COLOR + ","
-        + " COUNT(" + KEY_ID + ") count"
-        + " FROM " + TABLE_CATEGORY
-        + " LEFT JOIN ("
-        + " SELECT " + KEY_ID + ", " + KEY_CATEGORY
-        + " FROM " + TABLE_NOTES
-        + " WHERE " + KEY_TRASHED + " IS NOT 1"
-        + ") USING( " + KEY_CATEGORY + ") "
-        + " GROUP BY "
-        + KEY_CATEGORY_ID + ","
-        + KEY_CATEGORY_NAME + ","
-        + KEY_CATEGORY_DESCRIPTION + ","
-        + KEY_CATEGORY_COLOR
-        + " ORDER BY IFNULL(NULLIF(" + KEY_CATEGORY_NAME + ", ''),'zzzzzzzz') ";
-
-    Cursor cursor = null;
-    try {
-      cursor = getDatabase().rawQuery(sql, null);
-      // Looping through all rows and adding to list
-      if (cursor.moveToFirst()) {
-        do {
-          categoriesList.add(new Category(cursor.getLong(0),
-              cursor.getString(1), cursor.getString(2), cursor
-              .getString(3), cursor.getInt(4)));
-        } while (cursor.moveToNext());
-      }
-
-    } finally {
-      if (cursor != null) {
-        cursor.close();
-      }
-    }
-    return categoriesList;
-  }
-
-
-  /**
    * Updates or insert a new a category
    *
    * @param category Category to be updated or inserted
@@ -922,170 +574,6 @@ public class DbHelper extends SQLiteOpenHelper {
     deleted = db.delete(TABLE_CATEGORY, KEY_CATEGORY_ID + " = ?",
         new String[]{String.valueOf(category.getId())});
     return deleted;
-  }
-
-
-  /**
-   * Get note Category
-   */
-  public Category getCategory(Long id) {
-    Category category = null;
-    String sql = "SELECT "
-        + KEY_CATEGORY_ID + ","
-        + KEY_CATEGORY_NAME + ","
-        + KEY_CATEGORY_DESCRIPTION + ","
-        + KEY_CATEGORY_COLOR
-        + " FROM " + TABLE_CATEGORY
-        + " WHERE " + KEY_CATEGORY_ID + " = " + id;
-
-    try (Cursor cursor = getDatabase().rawQuery(sql, null)) {
-
-      if (cursor.moveToFirst()) {
-        category = new Category(cursor.getLong(0), cursor.getString(1),
-            cursor.getString(2), cursor.getString(3));
-      }
-
-    }
-    return category;
-  }
-
-
-  public int getCategorizedCount(Category category) {
-    int count = 0;
-    String sql = "SELECT COUNT(*)"
-        + " FROM " + TABLE_NOTES
-        + " WHERE " + KEY_CATEGORY + " = " + category.getId();
-
-    try (Cursor cursor = getDatabase().rawQuery(sql, null)) {
-      if (cursor.moveToFirst()) {
-        count = cursor.getInt(0);
-      }
-    }
-    return count;
-  }
-
-
-  /**
-   * Retrieves statistics data based on app usage
-   */
-  public Stats getStats() {
-    Stats mStats = new Stats();
-
-    // Categories
-    mStats.setCategories(getCategories().size());
-
-    // Everything about notes and their text stats
-    int notesActive = 0;
-    int notesArchived = 0;
-    int notesTrashed = 0;
-    int reminders = 0;
-    int remindersFuture = 0;
-    int checklists = 0;
-    int notesMasked = 0;
-    int tags = 0;
-    int locations = 0;
-    int totalWords = 0;
-    int totalChars = 0;
-    int maxWords = 0;
-    int maxChars = 0;
-    int avgWords;
-    int avgChars;
-    int words;
-    int chars;
-    List<Note> notes = getAllNotes(false);
-    for (Note note : notes) {
-      if (note.isTrashed()) {
-        notesTrashed++;
-      } else if (note.isArchived()) {
-        notesArchived++;
-      } else {
-        notesActive++;
-      }
-      if (note.getAlarm() != null && Long.parseLong(note.getAlarm()) > 0) {
-        if (Long.parseLong(note.getAlarm()) > Calendar.getInstance().getTimeInMillis()) {
-          remindersFuture++;
-        } else {
-          reminders++;
-        }
-      }
-      if (note.isChecklist()) {
-        checklists++;
-      }
-      if (note.isLocked()) {
-        notesMasked++;
-      }
-      tags += TagsHelper.retrieveTags(note).size();
-      if (note.getLongitude() != null && note.getLongitude() != 0) {
-        locations++;
-      }
-      words = NotesHelper.getWords(note);
-      chars = NotesHelper.getChars(note);
-      if (words > maxWords) {
-        maxWords = words;
-      }
-      if (chars > maxChars) {
-        maxChars = chars;
-      }
-      totalWords += words;
-      totalChars += chars;
-    }
-    mStats.setNotesActive(notesActive);
-    mStats.setNotesArchived(notesArchived);
-    mStats.setNotesTrashed(notesTrashed);
-    mStats.setReminders(reminders);
-    mStats.setRemindersFutures(remindersFuture);
-    mStats.setNotesChecklist(checklists);
-    mStats.setNotesMasked(notesMasked);
-    mStats.setTags(tags);
-    mStats.setLocation(locations);
-    avgWords = totalWords / (!notes.isEmpty() ? notes.size() : 1);
-    avgChars = totalChars / (!notes.isEmpty() ? notes.size() : 1);
-
-    mStats.setWords(totalWords);
-    mStats.setWordsMax(maxWords);
-    mStats.setWordsAvg(avgWords);
-    mStats.setChars(totalChars);
-    mStats.setCharsMax(maxChars);
-    mStats.setCharsAvg(avgChars);
-
-    // Everything about attachments
-    int attachmentsAll = 0;
-    int images = 0;
-    int videos = 0;
-    int audioRecordings = 0;
-    int sketches = 0;
-    int files = 0;
-
-    List<Attachment> attachments = getAllAttachments();
-    for (Attachment attachment : attachments) {
-      if (MIME_TYPE_IMAGE.equals(attachment.getMime_type())) {
-        images++;
-      } else if (MIME_TYPE_VIDEO.equals(attachment.getMime_type())) {
-        videos++;
-      } else if (MIME_TYPE_AUDIO.equals(attachment.getMime_type())) {
-        audioRecordings++;
-      } else if (MIME_TYPE_SKETCH.equals(attachment.getMime_type())) {
-        sketches++;
-      } else if (MIME_TYPE_FILES.equals(attachment.getMime_type())) {
-        files++;
-      }
-    }
-    mStats.setAttachments(attachmentsAll);
-    mStats.setImages(images);
-    mStats.setVideos(videos);
-    mStats.setAudioRecordings(audioRecordings);
-    mStats.setSketches(sketches);
-    mStats.setFiles(files);
-
-    return mStats;
-  }
-
-
-  public void setReminderFired(long noteId, boolean fired) {
-    ContentValues values = new ContentValues();
-    values.put(KEY_REMINDER_FIRED, fired);
-    getDatabase(true)
-        .update(TABLE_NOTES, values, KEY_ID + " = ?", new String[]{String.valueOf(noteId)});
   }
 
 
