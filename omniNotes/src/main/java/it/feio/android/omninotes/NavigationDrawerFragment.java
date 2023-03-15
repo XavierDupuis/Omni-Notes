@@ -20,6 +20,7 @@ package it.feio.android.omninotes;
 import static it.feio.android.omninotes.async.bus.SwitchFragmentEvent.Direction.CHILDREN;
 
 import android.animation.ValueAnimator;
+import android.content.res.Resources;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
@@ -205,7 +206,8 @@ public class NavigationDrawerFragment extends Fragment {
 
 
   private void refreshMenus() {
-    buildMainMenu();
+    Resources resources = mActivity.getResources();
+    buildMainMenu(resources);
     LogDelegate.v("Finished main menu initialization");
     buildCategoriesMenu();
     LogDelegate.v("Finished categories menu initialization");

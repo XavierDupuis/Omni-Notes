@@ -51,15 +51,15 @@ public class Note extends BaseNote implements Parcelable {
   }
 
 
-  public Note(Long creation, Long lastModification, String title, String content, Integer archived,
-      Integer trashed, String alarm, String recurrenceRule, Integer reminderFired, String latitude,
-      String longitude,
-      Category
-          category, Integer locked, Integer checklist) {
-    super(creation, lastModification, title, content, archived, trashed, alarm, reminderFired,
-        recurrenceRule,
-        latitude,
-        longitude, category, locked, checklist);
+  public Note(Metadata metadata, NoteInfos noteInfos,
+              Status status, Clock clock) {
+    super(metadata.getCreation(), metadata.getLastModification(),
+            noteInfos.getTitle(), noteInfos.getContent(),
+            status.getArchived(), status.getTrashed(),
+            clock.getAlarm(), clock.getReminderFired(),
+            clock.getRecurrenceRule(),
+            metadata.getLatitude(),
+            metadata.getLongitude(), noteInfos.getCategory(), status.getLocked(), noteInfos.getChecklist());
   }
 
 

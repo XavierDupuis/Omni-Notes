@@ -21,6 +21,7 @@ import static it.feio.android.omninotes.utils.ConstantsBase.PREF_DYNAMIC_MENU;
 import static it.feio.android.omninotes.utils.ConstantsBase.PREF_SHOW_UNCATEGORIZED;
 
 import android.content.Intent;
+import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.os.AsyncTask;
 import androidx.fragment.app.Fragment;
@@ -94,29 +95,31 @@ public class MainMenuTask extends AsyncTask<Void, Void, List<NavigationItem>> {
         && !mFragmentWeakReference.get().getActivity().isFinishing();
   }
 
-  private List<NavigationItem> buildMainMenu() {
+
+  private List<NavigationItem> buildMainMenu(Resources resources ) {
     if (!isAlive()) {
       return new ArrayList<>();
     }
 
-    String[] mNavigationArray = mainActivity.getResources().getStringArray(R.array.navigation_list);
-    TypedArray mNavigationIconsArray = mainActivity.getResources()
+    String[] mNavigationArray = resources.getStringArray(R.array.navigation_list);
+    TypedArray mNavigationIconsArray = resources
         .obtainTypedArray(R.array.navigation_list_icons);
-    TypedArray mNavigationIconsSelectedArray = mainActivity.getResources().obtainTypedArray(R.array
+    TypedArray mNavigationIconsSelectedArray = resources.obtainTypedArray(R.array
         .navigation_list_icons_selected);
 
     final List<NavigationItem> items = new ArrayList<>();
     for (int i = 0; i < mNavigationArray.length; i++) {
       if (!checkSkippableItem(i)) {
-        NavigationItem item = new NavigationItem(i, mNavigationArray[i],
-            mNavigationIconsArray.getResourceId(i,
-                0), mNavigationIconsSelectedArray.getResourceId(i, 0));
+        NavigationItem item = createNavigationItem(i, mNavigationArray[i], mNavigationIconsArray, mNavigationIconsSelectedArray);
         items.add(item);
       }
     }
     return items;
   }
 
+  private NavigationItem createNavigationItem(int i, String title, TypedArray iconsArray, TypedArray iconsSelectedArray) {
+    return new NavigationItem(i, title, iconsArray.getResourceId(i, 0), iconsSelectedArray.getResourceId(i, 0));
+  }
   private boolean checkSkippableItem(int i) {
     boolean skippable = false;
     boolean dynamicMenu = Prefs.getBoolean(PREF_DYNAMIC_MENU, true);
